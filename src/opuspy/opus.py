@@ -11,6 +11,8 @@ from brkrpautils import (
     save_new_password,
 )
 
+def say_hello_from_opuspy():
+    print("Hello from opuspy")
 
 def start_opus(pam_path, user, sapshcut_path):
     """
