@@ -3,12 +3,8 @@ name = "opuspy"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "brkrpautils",
-    "loguru",
-    "pywin32",
-]
+requires-python = ">=3.7"
+dependencies = ["brkrpautils", "loguru", "pywin32"]
 
 [tool.uv.sources]
 brkrpautils = { git = "https://github.com/BorholmsRegionsKommuneIT/brkrpautils" }
