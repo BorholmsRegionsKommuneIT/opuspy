@@ -50,8 +50,6 @@ def start_opus(pam_path, user, sapshcut_path):
             SapGuiAuto = None
             return
 
-        application.HistoryEnabled = False
-
         connection = application.Children(0)
         if not isinstance(connection, win32com.client.CDispatch):
             application = None
