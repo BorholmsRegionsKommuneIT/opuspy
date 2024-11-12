@@ -1,6 +1,6 @@
 [project]
 name = "opuspy"
-version = "0.3.0"
+version = "0.4.0"
 description = "Python SAP Opus client"
 readme = "README.md"
 requires-python = ">=3.8"
