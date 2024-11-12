@@ -1,10 +1,10 @@
 [project]
 name = "opuspy"
 version = "0.2.0"
-description = "Add your description here"
+description = "Python SAP Opus client"
 readme = "README.md"
-requires-python = ">=3.7"
-dependencies = ["brkrpautils", "loguru", "pywin32"]
+requires-python = ">=3.8"
+dependencies = ["brkrpautils>=0.1.0", "pywin32>=300"]
 
 [tool.uv.sources]
 brkrpautils = { git = "https://github.com/BorholmsRegionsKommuneIT/brkrpautils" }

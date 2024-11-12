@@ -1,8 +1,6 @@
 import subprocess
 import time
-import sys
 
-from loguru import logger
 import win32com.client  # pywin32
 
 from brkrpautils import (
@@ -29,7 +27,6 @@ def start_opus(pam_path, user, sapshcut_path):
     username, password = get_credentials(pam_path, user, fagsystem="opus")
 
     if not username or not password:
-        logger.error("Failed to retrieve credentials for robot", exc_info=True)
         return None
 
     command_args = [
@@ -95,9 +92,7 @@ def start_opus(pam_path, user, sapshcut_path):
             session.findById("/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT").text
             == "Nyt password"
         ):
-            logger.info("Password change required")
             backup_old_password(pam_path=pam_path, user=user)
-            logger.info("Backup of old password saved")
             new_password = generate_new_password(17)
             save_new_password(
                 new_password=new_password,
@@ -105,7 +100,6 @@ def start_opus(pam_path, user, sapshcut_path):
                 user=user,
                 fagsystem="opus",
             )
-            logger.info(f"New password saved: {new_password[:3]}{'***'}")
 
             # write new password to SAP
             session.findById(
@@ -121,6 +115,6 @@ def start_opus(pam_path, user, sapshcut_path):
 
         return session, connection, application, SapGuiAuto
 
-    except Exception:
-        logger.error("Failed to start SAP session", exc_info=True)
+    except Exception as e:
+        print(f"Error: {e}")
         return None
