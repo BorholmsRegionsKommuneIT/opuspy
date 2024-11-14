@@ -111,7 +111,7 @@ def start_opus(pam_path, user, sapshcut_path):
             session.findById("/app/con[0]/ses[0]/wnd[1]/tbar[0]/btn[0]").press()
             time.sleep(1)
 
-        return session, connection, application, SapGuiAuto
+        return session
 
     except Exception as e:
         print(f"Error: {e}")
