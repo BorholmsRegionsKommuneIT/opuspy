@@ -75,49 +75,48 @@ def start_opus(pam_path, user, sapshcut_path):
 
     subprocess.run(command_args, check=False)  # noqa: S603
 
-    try:
-        with sap_connection() as session:
-            # Check if SAP with ID /app/con[0]/ses[0]/wnd[1]/usr is open
-            element_id = "/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT"
+    with sap_connection() as session:
+        # Check if SAP with ID /app/con[0]/ses[0]/wnd[1]/usr is open to determine if password reset prompt is present
+        element_id = "/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT"
+        try:
+            element = session.findById(element_id)
+        except Exception as e:
+            return  # password prompt not present, continuing as normal
+
+        if element.text == "Nyt password":
             try:
-                element = session.findById(element_id)
-                if element.text == "Nyt password":
-                    logger.info("Detected password reset prompt in SAP.")
+                logger.info("Detected password reset prompt in SAP.")
 
-                    backup_old_password(pam_path=pam_path, user=user)
-                    new_password = generate_new_password(17)
-                    save_new_password(
-                        new_password=new_password,
-                        pam_path=pam_path,
-                        user=user,
-                        fagsystem="opus",
-                    )
+                backup_old_password(pam_path=pam_path, user=user)
+                new_password = generate_new_password(17)
+                save_new_password(
+                    new_password=new_password,
+                    pam_path=pam_path,
+                    user=user,
+                    fagsystem="opus",
+                )
 
-                    # Write new password to SAP
-                    session.findById(
-                        "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCODE"
-                    ).text = new_password
-                    session.findById(
-                        "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCOD2"
-                    ).text = new_password
+                # Write new password to SAP
+                session.findById(
+                    "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCODE"
+                ).text = new_password
+                session.findById(
+                    "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCOD2"
+                ).text = new_password
 
-                    # Press OK
-                    session.findById("/app/con[0]/ses[0]/wnd[1]/tbar[0]/btn[0]").press()
-                    logger.info("Password updated successfully in SAP.")
-                    time.sleep(1)
-
-                else:
-                    logger.info("Password reset prompt not detected.")
-
+                # Press OK
+                session.findById("/app/con[0]/ses[0]/wnd[1]/tbar[0]/btn[0]").press()
+                logger.info("Password updated successfully in SAP.")
+                time.sleep(1)
             except Exception as e:
-                logger.error(f"Error interacting with SAP element {element_id}: {e}")
-                raise
+                logger.error(f"Error while trying to change password {element_id}: {e}")
+                raise e
 
-        return session
-
-    except Exception as e:
-        logger.error(f"Failed to start SAP session: {e}")
-        return None
+        else:
+            logger.info("element_id found, but text did not match 'Nyt password'.")
+            raise RuntimeError(
+                "element_id found, but text did not match 'Nyt password'."
+            )
 
 
 # Example usage
