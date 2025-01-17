@@ -13,6 +13,8 @@ from brkrpautils import (
 
 from contextlib import contextmanager
 
+import pythoncom
+
 
 def say_hello_from_opuspy():
     logger.info("Hello from opuspy")
