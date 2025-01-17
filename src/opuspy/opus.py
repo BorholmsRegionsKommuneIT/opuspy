@@ -1,6 +1,7 @@
 import subprocess
 import time
 
+from loguru import logger
 import win32com.client  # pywin32
 
 from brkrpautils import (
@@ -10,9 +11,41 @@ from brkrpautils import (
     save_new_password,
 )
 
+from contextlib import contextmanager
+
 
 def say_hello_from_opuspy():
-    print("Hello from opuspy")
+    logger.info("Hello from opuspy")
+
+
+@contextmanager
+def sap_connection(timeout=30, interval=1):
+    """
+    Attempt to bind to an existing SAP GUI session within a given timeout.
+    Yields the session once available. Optionally, place any cleanup code
+    after the yield.
+    """
+    start_time = time.time()
+    session = None
+
+    while True:
+        try:
+            sap_gui = win32com.client.GetObject("SAPGUI")
+            scripting_engine = sap_gui.GetScriptingEngine
+            if scripting_engine is not None:
+                connection = scripting_engine.Connections(0)
+                session = connection.Sessions(0)
+                break
+        except pythoncom.com_error:
+            pass
+
+        if (time.time() - start_time) > timeout:
+            raise RuntimeError("Timed out waiting for SAP GUI readiness.")
+
+        time.sleep(interval)
+
+    # Now that session is found, yield control
+    yield session
 
 
 def start_opus(pam_path, user, sapshcut_path):
@@ -23,10 +56,11 @@ def start_opus(pam_path, user, sapshcut_path):
     :param sapshcut_path: str, path to SAPSHCUT.exe
     """
 
-    # unpacking
+    # Unpack credentials
     username, password = get_credentials(pam_path, user, fagsystem="opus")
 
     if not username or not password:
+        logger.error("Failed to retrieve credentials.")
         return None
 
     command_args = [
@@ -38,81 +72,52 @@ def start_opus(pam_path, user, sapshcut_path):
     ]
 
     subprocess.run(command_args, check=False)  # noqa: S603
-    time.sleep(1)
 
     try:
-        SapGuiAuto = win32com.client.GetObject("SAPGUI")
-        if not isinstance(SapGuiAuto, win32com.client.CDispatch):
-            return
+        with sap_connection() as session:
+            # Check if SAP with ID /app/con[0]/ses[0]/wnd[1]/usr is open
+            element_id = "/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT"
+            try:
+                element = session.findById(element_id)
+                if element.text == "Nyt password":
+                    logger.info("Detected password reset prompt in SAP.")
 
-        application = SapGuiAuto.GetScriptingEngine
-        if not isinstance(application, win32com.client.CDispatch):
-            SapGuiAuto = None
-            return
+                    backup_old_password(pam_path=pam_path, user=user)
+                    new_password = generate_new_password(17)
+                    save_new_password(
+                        new_password=new_password,
+                        pam_path=pam_path,
+                        user=user,
+                        fagsystem="opus",
+                    )
 
-        connection = application.Children(0)
-        if not isinstance(connection, win32com.client.CDispatch):
-            application = None
-            SapGuiAuto = None
-            return
+                    # Write new password to SAP
+                    session.findById(
+                        "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCODE"
+                    ).text = new_password
+                    session.findById(
+                        "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCOD2"
+                    ).text = new_password
 
-        if connection.DisabledByServer:
-            connection = None
-            application = None
-            SapGuiAuto = None
-            return
+                    # Press OK
+                    session.findById("/app/con[0]/ses[0]/wnd[1]/tbar[0]/btn[0]").press()
+                    logger.info("Password updated successfully in SAP.")
+                    time.sleep(1)
 
-        session = connection.Children(0)
-        if not isinstance(session, win32com.client.CDispatch):
-            connection = None
-            application = None
-            SapGuiAuto = None
-            return
+                else:
+                    logger.info("Password reset prompt not detected.")
 
-        if session.Busy:
-            session = None
-            connection = None
-            application = None
-            return
-
-        if session.Info.IsLowSpeedConnection:
-            session = None
-            connection = None
-            application = None
-            return
-
-        # ---------------------------------------------------------------------------- #
-        #                                  Script code                                 #
-        # ---------------------------------------------------------------------------- #
-
-        # Check if SAP with ID /app/con[0]/ses[0]/wnd[1]/usr is open
-        if (
-            session.findById("/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT").text
-            == "Nyt password"
-        ):
-            backup_old_password(pam_path=pam_path, user=user)
-            new_password = generate_new_password(17)
-            save_new_password(
-                new_password=new_password,
-                pam_path=pam_path,
-                user=user,
-                fagsystem="opus",
-            )
-
-            # write new password to SAP
-            session.findById(
-                "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCODE"
-            ).text = new_password
-            # repeat new password
-            session.findById(
-                "/app/con[0]/ses[0]/wnd[1]/usr/pwdRSYST-NCOD2"
-            ).text = new_password
-            # press OK
-            session.findById("/app/con[0]/ses[0]/wnd[1]/tbar[0]/btn[0]").press()
-            time.sleep(1)
+            except Exception as e:
+                logger.error(f"Error interacting with SAP element {element_id}: {e}")
+                raise
 
         return session
 
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Failed to start SAP session: {e}")
         return None
+
+
+# Example usage
+if __name__ == "__main__":
+    start_opus()
