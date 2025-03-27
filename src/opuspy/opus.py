@@ -1,5 +1,6 @@
 import subprocess
 import time
+import winreg
 
 from loguru import logger
 import win32com.client  # pywin32
@@ -118,7 +119,44 @@ def start_opus(pam_path, user, sapshcut_path):
                 "element_id found, but text did not match 'Nyt password'."
             )
 
+def is_sap_scripting_allowed() -> bool:
+    """
+    TRUE if scripting is allowed, FALSE if not.
+    """
+    try:
+        # Define the registry path
+        registry_path = (
+            r"SOFTWARE\WOW6432Node\SAP\SAPGUI Front\SAP Frontend Server\Security"
+        )
+        key_name = "UserScripting"
 
-# Example usage
+        # Open the registry key
+        reg_key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, registry_path, 0, winreg.KEY_READ
+        )
+
+        # Get the value of the UserScripting key
+        value, regtype = winreg.QueryValueEx(reg_key, key_name)
+
+        # if value is 1, scripting is allowed
+        if value == 1:
+            return True
+        else:
+            return False
+
+        # Close the registry key
+        winreg.CloseKey(reg_key)
+    except FileNotFoundError:
+        print("The specified registry key or value does not exist.")
+    except PermissionError:
+        print("Permission denied. Please run the script as an administrator.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+
+
 if __name__ == "__main__":
-    start_opus()
+    if is_sap_scripting_allowed():
+        start_opus()
+    else:
+        print("SAP scripting is not allowed. Please ask admin to enable scripting in registry")
