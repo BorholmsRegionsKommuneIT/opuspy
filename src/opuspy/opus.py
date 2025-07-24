@@ -22,7 +22,7 @@ def say_hello_from_opuspy():
 
 
 @contextmanager
-def sap_connection(timeout=30, interval=1, auto_close=True, force_close=False):
+def sap_connection(timeout=30, interval=1, auto_close=False, force_close=False):
     """
     Attempt to bind to an existing SAP GUI session within a given timeout.
     Yields the session once available.
@@ -85,7 +85,7 @@ def _sap_logoff(session, force=False):
             pass
 
         if not force:
-            return  # success (or at least we asked politely)
+            return  # successfully closed connection/session window (or at least we asked politely)
 
     except Exception:         # scripting call failed / window hung
         if not force:
