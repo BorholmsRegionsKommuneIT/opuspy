@@ -22,34 +22,79 @@ def say_hello_from_opuspy():
 
 
 @contextmanager
-def sap_connection(timeout=30, interval=1):
+def sap_connection(timeout=30, interval=1, auto_close=False, force_close=False):
     """
     Attempt to bind to an existing SAP GUI session within a given timeout.
-    Yields the session once available. Optionally, place any cleanup code
-    after the yield.
+    Yields the session once available.
+    If auto_close is True, log off / close when the 'with' block exits.
+    If force_close is True, kill the SAP processes if polite log-off fails.
     """
+    pythoncom.CoInitialize()
+
     start_time = time.time()
     session = None
 
     while True:
         try:
             sap_gui = win32com.client.GetObject("SAPGUI")
-            scripting_engine = sap_gui.GetScriptingEngine
-            if scripting_engine is not None:
-                connection = scripting_engine.Connections(0)
-                session = connection.Sessions(0)
-                break
+            scripting_engine  = sap_gui.GetScriptingEngine
+            if scripting_engine and scripting_engine.Children.Count:
+                connection = scripting_engine.Children(0)      # first connection
+                if connection.Children.Count:
+                    session = connection.Children(0) # first session
+                    break
         except pythoncom.com_error:
             pass
 
         if (time.time() - start_time) > timeout:
+            pythoncom.CoUninitialize()
             raise RuntimeError("Timed out waiting for SAP GUI readiness.")
 
         time.sleep(interval)
 
-    # Now that session is found, yield control
-    yield session
+    try:
+        yield session
+    finally:
+        if auto_close:
+            try:
+                _sap_logoff(session, force=force_close)
+            except Exception:
+                pass        # don't mask upstream exceptions
+        session = None
+        pythoncom.CoUninitialize()
 
+def _sap_logoff(session, force=False):
+    """
+    Try to exit SAP politely through its scripting interface.
+    When force=True, kill the processes if polite log-off fails.
+    """
+    if session is None:
+        return
+
+    try:
+        # put /nex in OK-code box -> "log off all sessions"
+        okcd = session.findById("wnd[0]/tbar[0]/okcd", False)
+        if okcd:
+            okcd.text = "/nex"
+            session.findById("wnd[0]").sendVKey(0)           # press <Enter>
+
+        # confirm the "Log off" dialog if it appears
+        try:
+            session.findById("wnd[1]/usr/btnSPOP-OPTION1").press()  # “Yes”
+        except Exception:
+            pass
+
+        if not force:
+            return  # successfully closed connection/session window (or at least we asked politely)
+
+    except Exception:         # scripting call failed / window hung
+        if not force:
+            return
+
+    # ── If we arrive here we either asked for force=True or polite close failed ──
+    for exe in ("saplogon.exe", "saplgpad.exe", "sapgui.exe"):
+        subprocess.run(["taskkill", "/IM", exe, "/F"],
+                       capture_output=True, check=False)
 
 def start_opus(pam_path, user, sapshcut_path):
     """
@@ -76,7 +121,7 @@ def start_opus(pam_path, user, sapshcut_path):
 
     subprocess.run(command_args, check=False)  # noqa: S603
 
-    with sap_connection() as session:
+    with sap_connection(auto_close=False, force_close=False) as session:
         # Check if SAP with ID /app/con[0]/ses[0]/wnd[1]/usr is open to determine if password reset prompt is present
         element_id = "/app/con[0]/ses[0]/wnd[1]/usr/lblRSYST-NCODE_TEXT"
         try:
